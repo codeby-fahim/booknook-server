@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
 import { MongoClient } from 'mongodb';
+import { createRemoteJWKSet, jwtVerify } from 'jose';
 
 
 // Primary Connection
@@ -9,6 +10,24 @@ const app = express();
 const PORT = process.env.PORT | 5000; 
 app.use(cors());
 app.use(express.json());
+
+// Middleware
+const verifyToken = async(req, res, next)=>{
+  const authHeaders = req.headers.authorization;
+  if(!authHeaders){
+    return res.status(401).send({msg: "Unauthorized"})
+  }
+  const JWKS = createRemoteJWKSet(
+    new URL(`${process.env.BETTER_AUTH_URL}/api/auth/jwks`)
+  )
+  try {
+    const {payload} = await jwtVerify(token, JWKS);
+    return next();
+  } catch (error) {
+    return res.status(500).send({msg: "Server error"})
+  }
+
+}
 
 // MongoDB Connection
 const client = new MongoClient(process.env.MONGODB_URL);
