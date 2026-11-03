@@ -83,7 +83,15 @@ app.delete('/my-books/:email',verifyToken, async(req, res)=>{
   const result = await booksCollection.deleteOne({"addedBy.email": email})
   res.send(result);
 })
-
+app.patch('/my-books/:email',verifyToken, async(req, res)=>{
+  const {email} = req.params;
+  const data = req.body;
+  const result = await booksCollection.updateOne(
+    {"addedBy.email": email},
+    {$set: data},
+  )
+  res.send(result);
+})
 
 
 
