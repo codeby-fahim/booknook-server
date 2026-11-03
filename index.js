@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
-import { MongoClient } from 'mongodb';
+import { MongoClient, ObjectId } from 'mongodb';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
 
@@ -17,6 +17,10 @@ const verifyToken = async(req, res, next)=>{
   if(!authHeaders){
     return res.status(401).send({msg: "Unauthorized"})
   }
+  const token = authHeaders.split(" ")[1]
+  if(!token){
+        return res.status(401).send({ msg: "Unauthorized" });
+  }
   const JWKS = createRemoteJWKSet(
     new URL(`${process.env.BETTER_AUTH_URL}/api/auth/jwks`)
   )
@@ -28,6 +32,7 @@ const verifyToken = async(req, res, next)=>{
   }
 
 }
+
 
 // MongoDB Connection
 const client = new MongoClient(process.env.MONGODB_URL);
@@ -50,11 +55,30 @@ const booksCollection = db.collection("books");
 app.get('/', ( req, res)=>{
   res.send("Welcome to booknook server")
 })
-app.post('/add-books', async(req, res)=>{
+app.post('/add-books',verifyToken, async(req, res)=>{
   const data = req.body;
   const result = await booksCollection.insertOne(data);
   res.send(result);
 })
+app.get('/all-books',verifyToken, async(req, res)=>{
+  const result = await booksCollection.find({}).sort({createdAt: -1}).toArray();
+  res.send(result);
+})
+app.get('/all-books/:id',verifyToken, async(req, res)=>{
+  const {id} = req.params;
+  const result = await booksCollection.findOne({_id: new ObjectId(id)})
+  res.send(result)
+})
+app.get('/arrival-books',verifyToken, async(req, res)=>{
+  const result = await booksCollection.find({}).sort({createdAt: -1}).limit(6).toArray();
+  res.send(result);
+})
+app.get('/my-books/:email',verifyToken, async(req, res)=>{
+  const {email} = req.params;
+  const result = await booksCollection.find({"addedBy.email": email}).toArray();
+  res.send(result)
+})
+
 
 
 
@@ -63,3 +87,5 @@ app.post('/add-books', async(req, res)=>{
 app.listen(PORT, ()=>{
   console.log(`server is running on port ${PORT}`);
 })
+
+export default app;
