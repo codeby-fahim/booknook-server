@@ -78,6 +78,11 @@ app.get('/my-books/:email',verifyToken, async(req, res)=>{
   const result = await booksCollection.find({"addedBy.email": email}).toArray();
   res.send(result)
 })
+app.delete('/my-books/:email',verifyToken, async(req, res)=>{
+  const {email} = req.params;
+  const result = await booksCollection.deleteOne({"addedBy.email": email})
+  res.send(result);
+})
 
 
 
