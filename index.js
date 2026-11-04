@@ -49,6 +49,7 @@ export async function connectToMongoDB() {
 const mongoClient = await connectToMongoDB();
 const db = mongoClient.db("booknook");
 const booksCollection = db.collection("books");
+const borrowsCollection = db.collection("borrows");
 
 
 
@@ -60,16 +61,17 @@ app.post('/add-books',verifyToken, async(req, res)=>{
   const result = await booksCollection.insertOne(data);
   res.send(result);
 })
-app.get('/all-books',verifyToken, async(req, res)=>{
+// Public endpoints: guests can browse the catalogue and new arrivals.
+app.get('/all-books', async(req, res)=>{
   const result = await booksCollection.find({}).sort({createdAt: -1}).toArray();
   res.send(result);
 })
-app.get('/all-books/:id',verifyToken, async(req, res)=>{
+app.get('/all-books/:id', async(req, res)=>{
   const {id} = req.params;
   const result = await booksCollection.findOne({_id: new ObjectId(id)})
   res.send(result)
 })
-app.get('/arrival-books',verifyToken, async(req, res)=>{
+app.get('/arrival-books', async(req, res)=>{
   const result = await booksCollection.find({}).sort({createdAt: -1}).limit(6).toArray();
   res.send(result);
 })
@@ -80,14 +82,26 @@ app.get('/my-books/:email',verifyToken, async(req, res)=>{
 })
 app.delete('/my-books/:email',verifyToken, async(req, res)=>{
   const {email} = req.params;
-  const result = await booksCollection.deleteOne({"addedBy.email": email})
+  const {bookId} = req.body ?? {};
+  const filter = {"addedBy.email": email};
+  if (bookId) {
+    filter._id = new ObjectId(bookId);
+  }
+  const result = await booksCollection.deleteOne(filter)
   res.send(result);
 })
 app.patch('/my-books/:email',verifyToken, async(req, res)=>{
   const {email} = req.params;
-  const data = req.body;
+  const {bookId, ...data} = req.body ?? {};
+  delete data._id;
+  delete data.addedBy;
+  delete data.createdAt;
+  const filter = {"addedBy.email": email};
+  if (bookId) {
+    filter._id = new ObjectId(bookId);
+  }
   const result = await booksCollection.updateOne(
-    {"addedBy.email": email},
+    filter,
     {$set: data},
   )
   res.send(result);
