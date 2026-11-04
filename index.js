@@ -30,7 +30,6 @@ const verifyToken = async(req, res, next)=>{
   } catch (error) {
     return res.status(500).send({msg: "Server error"})
   }
-
 }
 
 
@@ -106,7 +105,185 @@ app.patch('/my-books/:email',verifyToken, async(req, res)=>{
   )
   res.send(result);
 })
+// borrows API
+app.post("/borrows/:email", verifyToken, async (req, res) => {
+  try {
+    const { email } = req.params;
+    const { bookId } = req.body ?? {};
 
+    if (!bookId || !ObjectId.isValid(bookId)) {
+      return res.status(400).send({
+        success: false,
+        message: "Invalid book ID.",
+      });
+    }
+
+    const bookObjectId = new ObjectId(bookId);
+
+    // Check whether the user already borrowed this book
+    const existingBorrow = await borrowsCollection.findOne({
+      bookId: bookObjectId,
+      userEmail: email,
+      status: "borrowed",
+    });
+
+    if (existingBorrow) {
+      return res.status(400).send({
+        success: false,
+        message: "You have already borrowed this book.",
+      });
+    }
+
+    // Decrease available copies
+    const updateResult = await booksCollection.updateOne(
+      {
+        _id: bookObjectId,
+        availableCopies: { $gt: 0 },
+      },
+      {
+        $inc: { availableCopies: -1 },
+        $set: { updatedAt: new Date() },
+      }
+    );
+
+    if (updateResult.matchedCount === 0) {
+      return res.status(400).send({
+        success: false,
+        message: "Book not found or currently unavailable.",
+      });
+    }
+
+    // Get book information
+    const book = await booksCollection.findOne({
+      _id: bookObjectId,
+    });
+
+    // Create borrow record
+    const borrowData = {
+      bookId: bookObjectId,
+      userEmail: email,
+
+      bookInfo: {
+        title: book.title,
+        author: book.author,
+        image: book.image,
+      },
+
+      borrowedAt: new Date(),
+      returnedAt: null,
+      status: "borrowed",
+    };
+
+    const result = await borrowsCollection.insertOne(borrowData);
+
+    res.status(201).send({
+      success: true,
+      message: "Book borrowed successfully.",
+      data: result,
+    });
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message: "Failed to borrow book.",
+    });
+  }
+});
+app.get("/my-borrows/:email", verifyToken, async (req, res) => {
+  try {
+    const { email } = req.params;
+
+    const result = await borrowsCollection
+      .find({
+        userEmail: email,
+        status: "borrowed",
+      })
+      .sort({ borrowedAt: -1 })
+      .toArray();
+
+    res.send({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message: "Failed to get borrowed books.",
+    });
+  }
+});
+app.patch(
+  "/my-borrows/:email/:borrowId",
+  verifyToken,
+  async (req, res) => {
+    try {
+      const { email, borrowId } = req.params;
+
+      if (!ObjectId.isValid(borrowId)) {
+        return res.status(400).send({
+          success: false,
+          message: "Invalid borrow ID.",
+        });
+      }
+
+      const borrowObjectId = new ObjectId(borrowId);
+
+      // Find active borrow record
+      const borrow = await borrowsCollection.findOne({
+        _id: borrowObjectId,
+        userEmail: email,
+        status: "borrowed",
+      });
+
+      if (!borrow) {
+        return res.status(404).send({
+          success: false,
+          message: "Borrow record not found or already returned.",
+        });
+      }
+
+      // Update borrow status
+      const returnResult = await borrowsCollection.updateOne(
+        {
+          _id: borrowObjectId,
+          userEmail: email,
+          status: "borrowed",
+        },
+        {
+          $set: {
+            status: "returned",
+            returnedAt: new Date(),
+          },
+        }
+      );
+
+      if (returnResult.modifiedCount !== 1) {
+        return res.status(400).send({
+          success: false,
+          message: "Book could not be returned.",
+        });
+      }
+
+      // Increase available copies
+      await booksCollection.updateOne(
+        { _id: borrow.bookId },
+        {
+          $inc: { availableCopies: 1 },
+          $set: { updatedAt: new Date() },
+        }
+      );
+
+      res.send({
+        success: true,
+        message: "Book returned successfully.",
+      });
+    } catch (error) {
+      res.status(500).send({
+        success: false,
+        message: "Failed to return book.",
+      });
+    }
+  }
+);
 
 
 
